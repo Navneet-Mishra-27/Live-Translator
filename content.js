@@ -46,16 +46,25 @@ const observer = new MutationObserver(() => {
 
         // Step 1: Capture audio from the video
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createMediaElementSource(video);
 
-        const destination = audioContext.createMediaStreamDestination();
-        source.connect(audioContext.destination); // play video normally
-        source.connect(destination); // capture stream
+        if (!video.audioSource) {
+            const source = audioContext.createMediaElementSource(video);
+            video.audioSource = source;
 
-        const audioStream = destination.stream;
-        console.log("Audio stream captured:", audioStream);
+            // Connect to speakers so video plays
+            source.connect(audioContext.destination);
 
+            // Also connect to a MediaStreamDestination to capture audio
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+
+            video.audioStream = destination.stream;
+            console.log("Audio stream captured:", video.audioStream);
+        }
+
+        // Step 2: Create the subtitle overlay
         createSubtitleOverlay(video);
+
         video.hasSubtitleOverlay = true;
     }
 });
