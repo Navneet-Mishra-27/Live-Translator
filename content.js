@@ -1,17 +1,15 @@
 // content.js
 
+let audioContext; // make audioContext global for user interaction resume
+
 function createSubtitleOverlay(video) {
-    // Avoid creating multiple overlays
     if (document.getElementById('subtitleOverlay')) return;
 
-    // Find proper container
     const container = video.closest('.html5-video-container') || video.parentElement;
     if (!container) return;
 
-    // Ensure relative positioning
     container.style.position = 'relative';
 
-    // Create overlay div
     const subtitleDiv = document.createElement('div');
     subtitleDiv.id = 'subtitleOverlay';
     subtitleDiv.style.position = 'absolute';
@@ -26,7 +24,6 @@ function createSubtitleOverlay(video) {
 
     container.appendChild(subtitleDiv);
 
-    // Sample hardcoded subtitles
     const subtitles = [
         { time: 0, text: "Hello, welcome to the video!" },
         { time: 5, text: "This is a test subtitle." },
@@ -40,34 +37,47 @@ function createSubtitleOverlay(video) {
     });
 }
 
+// Function to safely capture audio
+function captureAudio(video) {
+    try {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        if (!video.audioSource) {
+            const source = audioContext.createMediaElementSource(video);
+            video.audioSource = source;
+
+            // Only connect to MediaStreamDestination for processing, NOT to destination
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+            video.audioStream = destination.stream;
+
+            console.log("Audio stream captured (processing only)", video.audioStream);
+        }
+    } catch (e) {
+        console.warn("Audio capture skipped (probably already in use by YouTube):", e);
+    }
+}
+
+// Resume audio context on first user interaction (required by Chrome)
+document.addEventListener('click', () => {
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => console.log("AudioContext resumed"));
+    }
+}, { once: true });
+
 // MutationObserver to detect dynamically loaded videos
 const observer = new MutationObserver(() => {
     const video = document.querySelector('video');
-
     if (video && !video.hasSubtitleOverlay) {
         const container = video.closest('.html5-video-container') || video.parentElement;
-        if (!container) return; // wait until container exists
+        if (!container) return;
 
         console.log('Video found:', video);
 
         // Step 1: Capture audio safely
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-        if (!video.audioSource) {
-            try {
-                const source = audioContext.createMediaElementSource(video);
-                video.audioSource = source;
-
-                // Only connect to MediaStreamDestination to capture audio
-                const destination = audioContext.createMediaStreamDestination();
-                source.connect(destination);
-
-                video.audioStream = destination.stream;
-                console.log("Audio stream captured:", video.audioStream);
-            } catch (e) {
-                console.warn("Audio capture skipped (already in use by YouTube):", e);
-            }
-        }
+        captureAudio(video);
 
         // Step 2: Create subtitle overlay
         createSubtitleOverlay(video);
@@ -76,5 +86,4 @@ const observer = new MutationObserver(() => {
     }
 });
 
-// Start observing the body for dynamically loaded videos
 observer.observe(document.body, { childList: true, subtree: true });
