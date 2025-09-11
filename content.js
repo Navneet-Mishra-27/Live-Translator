@@ -4,11 +4,11 @@ function createSubtitleOverlay(video) {
     // Avoid creating multiple overlays
     if (document.getElementById('subtitleOverlay')) return;
 
-    // Find the proper container
+    // Find proper container
     const container = video.closest('.html5-video-container') || video.parentElement;
     if (!container) return;
 
-    // Ensure container has relative positioning
+    // Ensure relative positioning
     container.style.position = 'relative';
 
     // Create overlay div
@@ -26,14 +26,13 @@ function createSubtitleOverlay(video) {
 
     container.appendChild(subtitleDiv);
 
-    // Hardcoded sample subtitles
+    // Sample hardcoded subtitles
     const subtitles = [
         { time: 0, text: "Hello, welcome to the video!" },
         { time: 5, text: "This is a test subtitle." },
         { time: 10, text: "It will change as the video plays." }
     ];
 
-    // Update subtitle as video plays
     video.addEventListener('timeupdate', () => {
         const currentTime = video.currentTime;
         const currentSubtitle = subtitles.slice().reverse().find(s => currentTime >= s.time);
@@ -47,25 +46,27 @@ const observer = new MutationObserver(() => {
 
     if (video && !video.hasSubtitleOverlay) {
         const container = video.closest('.html5-video-container') || video.parentElement;
-        if (!container) return; // Wait until container exists
+        if (!container) return; // wait until container exists
 
         console.log('Video found:', video);
 
         // Step 1: Capture audio safely
         const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
         if (!video.audioSource) {
-            const source = audioContext.createMediaElementSource(video);
-            video.audioSource = source;
+            try {
+                const source = audioContext.createMediaElementSource(video);
+                video.audioSource = source;
 
-            // Let video play normally
-            source.connect(audioContext.destination);
+                // Only connect to MediaStreamDestination to capture audio
+                const destination = audioContext.createMediaStreamDestination();
+                source.connect(destination);
 
-            // Also connect to MediaStreamDestination to capture audio
-            const destination = audioContext.createMediaStreamDestination();
-            source.connect(destination);
-
-            video.audioStream = destination.stream;
-            console.log("Audio stream captured:", video.audioStream);
+                video.audioStream = destination.stream;
+                console.log("Audio stream captured:", video.audioStream);
+            } catch (e) {
+                console.warn("Audio capture skipped (already in use by YouTube):", e);
+            }
         }
 
         // Step 2: Create subtitle overlay
