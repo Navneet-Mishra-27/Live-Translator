@@ -1,3 +1,5 @@
+// content.js
+
 function createSubtitleOverlay(video) {
     let subtitleDiv = document.getElementById('subtitleOverlay');
     if (!subtitleDiv) {
@@ -41,6 +43,18 @@ const observer = new MutationObserver(() => {
     const video = document.querySelector('video');
     if (video && !video.hasSubtitleOverlay) {
         console.log('Video found:', video);
+
+        // Step 1: Capture audio from the video
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaElementSource(video);
+
+        const destination = audioContext.createMediaStreamDestination();
+        source.connect(audioContext.destination); // play video normally
+        source.connect(destination); // capture stream
+
+        const audioStream = destination.stream;
+        console.log("Audio stream captured:", audioStream);
+
         createSubtitleOverlay(video);
         video.hasSubtitleOverlay = true;
     }
