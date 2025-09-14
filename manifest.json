@@ -1,16 +1,28 @@
 {
-  "name": "Hello Extensions",
-  "description": "Base Level Extension",
+  "name": "Real-Time Multilingual Video Subtitle & Dubbing",
+  "description": "Overlays subtitles and enables safe audio capture for translation/dubbing on YouTube videos.",
   "version": "1.0",
   "manifest_version": 3,
   "action": {
-    "default_popup": "hello.html",
-    "default_icon": "icon.png"
+    "default_icon": "icon.png",
+    "default_popup": "hello.html"
   },
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"]
     }
-  ]
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*"
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting"
+  ],
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  }
 }
