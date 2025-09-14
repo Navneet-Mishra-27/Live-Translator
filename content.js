@@ -27,10 +27,12 @@ function createSubtitleOverlay(video) {
     ];
 
     video.addEventListener('timeupdate', () => {
-        const currentTime = video.currentTime;
-        const currentSubtitle = subtitles.slice().reverse().find(s => currentTime >= s.time);
-        subtitleDiv.innerText = currentSubtitle ? currentSubtitle.text : '';
-    });
+    const currentTime = video.currentTime;
+    console.log("Video time:", currentTime);
+    const currentSubtitle = subtitles.slice().reverse().find(s => currentTime >= s.time);
+    subtitleDiv.innerText = currentSubtitle ? currentSubtitle.text : '';
+});
+
 }
 
 function captureAudio(video) {
