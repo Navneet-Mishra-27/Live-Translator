@@ -10,14 +10,18 @@ function createSubtitleOverlay(video) {
     subtitleDiv.id = 'subtitleOverlay';
     subtitleDiv.style.position = 'absolute';
     subtitleDiv.style.width = '100%';
-    subtitleDiv.style.bottom = '10%';
+    subtitleDiv.style.bottom = '15%';  // Raised above controls
     subtitleDiv.style.textAlign = 'center';
-    subtitleDiv.style.color = 'white';
-    subtitleDiv.style.fontSize = '24px';
+    subtitleDiv.style.color = 'yellow';  // Highly visible color
+    subtitleDiv.style.fontSize = '28px'; // Larger font size
     subtitleDiv.style.textShadow = '2px 2px 6px black';
     subtitleDiv.style.pointerEvents = 'none';
-    subtitleDiv.style.zIndex = '999999';
-    subtitleDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+    subtitleDiv.style.zIndex = '2147483647';  // Max z-index to ensure visibility
+    subtitleDiv.style.backgroundColor = 'rgba(0, 0, 0, 0.6)';  // Dark translucent background for contrast
+    subtitleDiv.style.padding = '4px 8px';
+    subtitleDiv.style.borderRadius = '4px';
+    subtitleDiv.style.userSelect = 'none';  // Prevent text selection
+    subtitleDiv.style.whiteSpace = 'nowrap';  // Prevent line breaks
     container.appendChild(subtitleDiv);
 
     const subtitles = [
@@ -27,13 +31,11 @@ function createSubtitleOverlay(video) {
     ];
 
     video.addEventListener('timeupdate', () => {
-    const currentTime = video.currentTime;
-    const currentSubtitle = subtitles.slice().reverse().find(s => currentTime >= s.time);
-    console.log("Video time:", currentTime.toFixed(2), "Current subtitle:", currentSubtitle ? currentSubtitle.text : "None");
-    subtitleDiv.textContent = currentSubtitle ? currentSubtitle.text : '';
-});
-
-
+        const currentTime = video.currentTime;
+        const currentSubtitle = subtitles.slice().reverse().find(s => currentTime >= s.time);
+        console.log("Video time:", currentTime.toFixed(2), "Current subtitle:", currentSubtitle ? currentSubtitle.text : "None");
+        subtitleDiv.textContent = currentSubtitle ? currentSubtitle.text : '';
+    });
 }
 
 function captureAudio(video) {
@@ -42,7 +44,7 @@ function captureAudio(video) {
         if (!capturedAudioStream && video.captureStream) {
             capturedAudioStream = video.captureStream();
             console.log("Audio stream captured via captureStream:", capturedAudioStream);
-            // You can use capturedAudioStream for your processing pipeline
+            // capturedAudioStream can now be used for audio processing pipeline
         } else {
             console.warn("captureStream not supported or already captured");
         }
