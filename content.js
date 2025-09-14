@@ -2,7 +2,7 @@ let capturedAudioStream = null;
 
 function createSubtitleOverlay(video) {
     if (document.getElementById('subtitleOverlay')) return;
-    const container = video.closest('.html5-video-container') || video.parentElement;
+    const container = document.querySelector('.html5-video-player');
     if (!container) return;
     container.style.position = 'relative';
 
