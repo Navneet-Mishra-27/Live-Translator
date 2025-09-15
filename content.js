@@ -63,17 +63,26 @@ function processAudioStream(stream) {
 
 function captureAudio(video) {
     try {
-        if (!capturedAudioStream && video.captureStream) {
-            capturedAudioStream = video.captureStream();
-            console.log("Audio stream captured:", capturedAudioStream);
-            processAudioStream(capturedAudioStream);
-        } else {
-            console.warn("captureStream not supported or already captured");
-        }
+        const audioContext = new AudioContext();
+
+        // Connect video element directly into Web Audio API
+        const source = audioContext.createMediaElementSource(video);
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        processor.onaudioprocess = (event) => {
+            const audioData = event.inputBuffer.getChannelData(0);
+            console.log("Audio samples:", audioData.slice(0, 10));
+        };
+
+        console.log("Audio processing started with MediaElementSource");
     } catch (e) {
-        console.warn("Audio capture failed:", e);
+        console.error("Audio capture failed:", e);
     }
 }
+
 
 function initializeForCurrentVideo() {
     const video = document.querySelector('video');
