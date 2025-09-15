@@ -38,13 +38,35 @@ function createSubtitleOverlay(video) {
     });
 }
 
+function processAudioStream(stream) {
+    try {
+        const audioContext = new AudioContext();
+        const source = audioContext.createMediaStreamSource(stream);
+
+        // ScriptProcessor is old but works for debugging
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+        source.connect(processor);
+        processor.connect(audioContext.destination);
+
+        processor.onaudioprocess = (event) => {
+            const audioData = event.inputBuffer.getChannelData(0);
+            console.log("Captured audio chunk:", audioData.slice(0, 10)); 
+            // show only first 10 samples for readability
+        };
+
+        console.log("Audio processing started");
+    } catch (e) {
+        console.error("Failed to process audio stream:", e);
+    }
+}
+
 function captureAudio(video) {
     try {
-        // Use captureStream if available and not already captured
         if (!capturedAudioStream && video.captureStream) {
             capturedAudioStream = video.captureStream();
-            console.log("Audio stream captured via captureStream:", capturedAudioStream);
-            // capturedAudioStream can now be used for audio processing pipeline
+            console.log("Audio stream captured:", capturedAudioStream);
+            processAudioStream(capturedAudioStream);
         } else {
             console.warn("captureStream not supported or already captured");
         }
@@ -62,6 +84,7 @@ function initializeForCurrentVideo() {
         video.dataset.hasSubtitleOverlay = "true";
     }
 }
+
 
 window.addEventListener('yt-navigate-finish', initializeForCurrentVideo);
 window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
