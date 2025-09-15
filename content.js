@@ -65,19 +65,22 @@ function captureAudio(video) {
     try {
         const audioContext = new AudioContext();
 
-        // Connect video element directly into Web Audio API
         const source = audioContext.createMediaElementSource(video);
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
+        // Your processor (for debugging or sending to STT)
+        const processor = audioContext.createScriptProcessor(4096, 1, 1);
         source.connect(processor);
         processor.connect(audioContext.destination);
+
+        // Also route video audio to speakers directly
+        source.connect(audioContext.destination);
 
         processor.onaudioprocess = (event) => {
             const audioData = event.inputBuffer.getChannelData(0);
             console.log("Audio samples:", audioData.slice(0, 10));
         };
 
-        console.log("Audio processing started with MediaElementSource");
+        console.log("Audio processing started with MediaElementSource (sound + capture)");
     } catch (e) {
         console.error("Audio capture failed:", e);
     }
