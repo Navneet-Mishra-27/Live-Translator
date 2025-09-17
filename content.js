@@ -14,7 +14,7 @@ function connectToServer() {
 }
 connectToServer();
 
-// ======= SUBTITLE OVERLAY =======
+// ======= CREATE SUBTITLE OVERLAY =======
 function createSubtitleOverlay(video) {
     if (document.getElementById('subtitleOverlay')) return;
 
@@ -47,13 +47,10 @@ function createSubtitleOverlay(video) {
 async function captureAudio(video) {
     try {
         if (!video.duration || video.duration <= 1) return; // skip ads
-
-        // Avoid multiple audio contexts
         if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
 
         audioContext = new AudioContext();
 
-        // Embedded AudioWorklet processor
         const processorCode = `
         class PCMProcessor extends AudioWorkletProcessor {
             process(inputs) {
@@ -85,9 +82,8 @@ async function captureAudio(video) {
         };
 
         source.connect(workletNode).connect(audioContext.destination);
-        console.log("Audio capture started (real video only)");
+        console.log("Audio capture started");
 
-        // Cleanup on video end
         video.addEventListener('ended', () => {
             workletNode.disconnect();
             audioContext.close();
@@ -99,26 +95,29 @@ async function captureAudio(video) {
     }
 }
 
-// ======= REAL-TIME SUBTITLE STREAMING =======
+// ======= SUBTITLE STREAMING =======
 function startSubtitleStreaming(video) {
     const subtitleDiv = document.getElementById('subtitleOverlay');
     if (!subtitleDiv) return;
 
+    // Demo hardcoded subtitles
+    const subtitles = [
+        { time: 0, text: "Hello, welcome to the video!" },
+        { time: 5, text: "This is a test subtitle." },
+        { time: 10, text: "It will change as the video plays." }
+    ];
+
     let lastText = "";
-    const subtitles = []; // Initially empty, replace with backend updates later
+    let lastIndex = -1;
 
     video.addEventListener('timeupdate', () => {
         const currentTime = video.currentTime;
-
-        // Example: dynamic subtitle replacement (if real-time backend is connected)
-        let currentText = "";
-        if (subtitles.length) {
-            currentText = subtitles.slice().reverse().find(s => currentTime >= s.time)?.text || "";
+        if (lastIndex + 1 < subtitles.length && currentTime >= subtitles[lastIndex + 1].time) {
+            lastIndex++;
         }
-
+        const currentText = lastIndex >= 0 ? subtitles[lastIndex].text : "";
         subtitleDiv.textContent = currentText;
 
-        // Send only when text changes
         if (currentText !== lastText) {
             lastText = currentText;
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -130,6 +129,7 @@ function startSubtitleStreaming(video) {
     video.addEventListener('ended', () => {
         subtitleDiv.textContent = "";
         lastText = "";
+        lastIndex = -1;
     });
 }
 
@@ -140,7 +140,6 @@ function initializeForCurrentVideo() {
     if (video.dataset.hasSubtitleOverlay === "true") return;
 
     video.dataset.hasSubtitleOverlay = "true";
-
     createSubtitleOverlay(video);
     captureAudio(video);
     startSubtitleStreaming(video);
