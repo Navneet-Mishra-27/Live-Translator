@@ -14,16 +14,9 @@ function connectToServer() {
 }
 connectToServer();
 
-// ======= SUBTITLES =======
-const subtitles = [
-    { time: 0, text: "Hello, welcome to the video!" },
-    { time: 5, text: "This is a test subtitle." },
-    { time: 10, text: "It will change as the video plays." }
-];
-
+// ======= SUBTITLE OVERLAY =======
 function createSubtitleOverlay(video) {
-    const existing = document.getElementById('subtitleOverlay');
-    if (existing) existing.remove();
+    if (document.getElementById('subtitleOverlay')) return;
 
     const container = document.querySelector('.html5-video-player') || video.parentElement;
     if (!container) return;
@@ -48,39 +41,16 @@ function createSubtitleOverlay(video) {
         whiteSpace: 'nowrap'
     });
     container.appendChild(subtitleDiv);
-
-    let lastIndex = -1;
-
-    function updateSubtitle() {
-        const currentTime = video.currentTime;
-        if (lastIndex + 1 < subtitles.length && currentTime >= subtitles[lastIndex + 1].time) {
-            lastIndex++;
-        }
-        const currentText = lastIndex >= 0 ? subtitles[lastIndex].text : '';
-        subtitleDiv.textContent = currentText;
-
-        // Send subtitle text in real-time via WebSocket
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'subtitle', time: currentTime, text: currentText }));
-        }
-    }
-
-    video.addEventListener('timeupdate', updateSubtitle);
-    video.addEventListener('ended', () => {
-        subtitleDiv.textContent = '';
-        lastIndex = -1;
-    });
 }
 
-// ======= AUDIO CAPTURE WITH EMBEDDED WORKLET =======
+// ======= AUDIO CAPTURE WITH AUDIOWORKLET =======
 async function captureAudio(video) {
     try {
         if (!video.duration || video.duration <= 1) return; // skip ads
 
-        if (audioContext) {
-            audioContext.close();
-            audioContext = null;
-        }
+        // Avoid multiple audio contexts
+        if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
+
         audioContext = new AudioContext();
 
         // Embedded AudioWorklet processor
@@ -105,7 +75,6 @@ async function captureAudio(video) {
         const url = URL.createObjectURL(blob);
         await audioContext.audioWorklet.addModule(url);
 
-        if (workletNode) workletNode.disconnect();
         const source = audioContext.createMediaElementSource(video);
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
@@ -118,33 +87,66 @@ async function captureAudio(video) {
         source.connect(workletNode).connect(audioContext.destination);
         console.log("Audio capture started (real video only)");
 
+        // Cleanup on video end
         video.addEventListener('ended', () => {
             workletNode.disconnect();
             audioContext.close();
             audioContext = null;
             workletNode = null;
         });
-
     } catch (e) {
         console.error("Audio capture failed:", e);
     }
+}
+
+// ======= REAL-TIME SUBTITLE STREAMING =======
+function startSubtitleStreaming(video) {
+    const subtitleDiv = document.getElementById('subtitleOverlay');
+    if (!subtitleDiv) return;
+
+    let lastText = "";
+    const subtitles = []; // Initially empty, replace with backend updates later
+
+    video.addEventListener('timeupdate', () => {
+        const currentTime = video.currentTime;
+
+        // Example: dynamic subtitle replacement (if real-time backend is connected)
+        let currentText = "";
+        if (subtitles.length) {
+            currentText = subtitles.slice().reverse().find(s => currentTime >= s.time)?.text || "";
+        }
+
+        subtitleDiv.textContent = currentText;
+
+        // Send only when text changes
+        if (currentText !== lastText) {
+            lastText = currentText;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'subtitle', time: currentTime, text: currentText }));
+            }
+        }
+    });
+
+    video.addEventListener('ended', () => {
+        subtitleDiv.textContent = "";
+        lastText = "";
+    });
 }
 
 // ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
     const video = document.querySelector('video');
     if (!video) return;
+    if (video.dataset.hasSubtitleOverlay === "true") return;
 
-    video.dataset.hasSubtitleOverlay = "";
+    video.dataset.hasSubtitleOverlay = "true";
 
-    if (!video.dataset.hasSubtitleOverlay) {
-        captureAudio(video);
-        createSubtitleOverlay(video);
-        video.dataset.hasSubtitleOverlay = "true";
-    }
+    createSubtitleOverlay(video);
+    captureAudio(video);
+    startSubtitleStreaming(video);
 }
 
-// Listen for SPA navigation / playlist changes
+// SPA / playlist support
 window.addEventListener('yt-navigate-finish', initializeForCurrentVideo);
 window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
 const observer = new MutationObserver(initializeForCurrentVideo);
