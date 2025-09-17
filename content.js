@@ -114,6 +114,7 @@ async function captureAudio(video) {
 }
 
 
+
 // ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
     const video = document.querySelector('video');
