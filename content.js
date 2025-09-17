@@ -6,13 +6,26 @@ let workletNode = null;
 function connectToServer() {
     ws = new WebSocket("ws://localhost:3000");
     ws.onopen = () => console.log("Connected to backend server");
-    ws.onmessage = (event) => console.log("Message from server:", event.data);
+    ws.onmessage = (event) => handleBackendMessage(event.data);
     ws.onclose = () => {
         console.log("Disconnected from backend, retrying in 3s...");
         setTimeout(connectToServer, 3000);
     };
 }
 connectToServer();
+
+// ======= HANDLE BACKEND MESSAGES =======
+function handleBackendMessage(data) {
+    try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'subtitle') {
+            const subtitleDiv = document.getElementById('subtitleOverlay');
+            if (subtitleDiv) subtitleDiv.textContent = msg.text || '';
+        }
+    } catch (e) {
+        console.error("Failed to parse backend message:", e);
+    }
+}
 
 // ======= CREATE SUBTITLE OVERLAY =======
 function createSubtitleOverlay(video) {
@@ -95,44 +108,6 @@ async function captureAudio(video) {
     }
 }
 
-// ======= SUBTITLE STREAMING =======
-function startSubtitleStreaming(video) {
-    const subtitleDiv = document.getElementById('subtitleOverlay');
-    if (!subtitleDiv) return;
-
-    // Demo hardcoded subtitles
-    const subtitles = [
-        { time: 0, text: "Hello, welcome to the video!" },
-        { time: 5, text: "This is a test subtitle." },
-        { time: 10, text: "It will change as the video plays." }
-    ];
-
-    let lastText = "";
-    let lastIndex = -1;
-
-    video.addEventListener('timeupdate', () => {
-        const currentTime = video.currentTime;
-        if (lastIndex + 1 < subtitles.length && currentTime >= subtitles[lastIndex + 1].time) {
-            lastIndex++;
-        }
-        const currentText = lastIndex >= 0 ? subtitles[lastIndex].text : "";
-        subtitleDiv.textContent = currentText;
-
-        if (currentText !== lastText) {
-            lastText = currentText;
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'subtitle', time: currentTime, text: currentText }));
-            }
-        }
-    });
-
-    video.addEventListener('ended', () => {
-        subtitleDiv.textContent = "";
-        lastText = "";
-        lastIndex = -1;
-    });
-}
-
 // ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
     const video = document.querySelector('video');
@@ -142,7 +117,6 @@ function initializeForCurrentVideo() {
     video.dataset.hasSubtitleOverlay = "true";
     createSubtitleOverlay(video);
     captureAudio(video);
-    startSubtitleStreaming(video);
 }
 
 // SPA / playlist support
