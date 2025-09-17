@@ -64,6 +64,7 @@ async function captureAudio(video) {
 
         audioContext = new AudioContext();
 
+        // Create AudioWorklet processor
         const processorCode = `
         class PCMProcessor extends AudioWorkletProcessor {
             process(inputs) {
@@ -88,14 +89,18 @@ async function captureAudio(video) {
         const source = audioContext.createMediaElementSource(video);
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
+        // Send audio chunks to WebSocket
         workletNode.port.onmessage = (event) => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(event.data);
             }
         };
 
-        source.connect(workletNode).connect(audioContext.destination);
-        console.log("Audio capture started");
+        // **Connect video to both capture node and destination**
+        source.connect(workletNode);           // for capturing
+        source.connect(audioContext.destination); // for hearing audio
+
+        console.log("Audio capture started (you should hear video now)");
 
         video.addEventListener('ended', () => {
             workletNode.disconnect();
@@ -107,6 +112,7 @@ async function captureAudio(video) {
         console.error("Audio capture failed:", e);
     }
 }
+
 
 // ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
