@@ -18,9 +18,9 @@ connectToServer();
 function handleBackendMessage(data) {
     try {
         const msg = JSON.parse(data);
-        if (msg.type === 'subtitle') {
+        if (msg.text) {
             const subtitleDiv = document.getElementById('subtitleOverlay');
-            if (subtitleDiv) subtitleDiv.textContent = msg.text || '';
+            if (subtitleDiv) subtitleDiv.textContent = msg.text;
         }
     } catch (e) {
         console.error("Failed to parse backend message:", e);
@@ -64,7 +64,6 @@ async function captureAudio(video) {
 
         audioContext = new AudioContext();
 
-        // Create AudioWorklet processor
         const processorCode = `
         class PCMProcessor extends AudioWorkletProcessor {
             process(inputs) {
@@ -89,22 +88,21 @@ async function captureAudio(video) {
         const source = audioContext.createMediaElementSource(video);
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
-        // Send audio chunks to WebSocket
+        // Send PCM audio chunks to backend
         workletNode.port.onmessage = (event) => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(event.data);
             }
         };
 
-        // **Connect video to both capture node and destination**
-        source.connect(workletNode);           // for capturing
-        source.connect(audioContext.destination); // for hearing audio
+        source.connect(workletNode);            // capture audio
+        source.connect(audioContext.destination); // hear audio
 
         console.log("Audio capture started (you should hear video now)");
 
         video.addEventListener('ended', () => {
-            workletNode.disconnect();
-            audioContext.close();
+            if (workletNode) workletNode.disconnect();
+            if (audioContext) audioContext.close();
             audioContext = null;
             workletNode = null;
         });
@@ -113,13 +111,10 @@ async function captureAudio(video) {
     }
 }
 
-
-
 // ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
     const video = document.querySelector('video');
-    if (!video) return;
-    if (video.dataset.hasSubtitleOverlay === "true") return;
+    if (!video || video.dataset.hasSubtitleOverlay === "true") return;
 
     video.dataset.hasSubtitleOverlay = "true";
     createSubtitleOverlay(video);
