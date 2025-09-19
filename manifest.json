@@ -7,15 +7,17 @@
     "default_icon": "icon.png",
     "default_popup": "hello.html"
   },
- "content_scripts": [
-  {
-    "matches": ["*://www.youtube.com/*"],
-    "js": ["content.js"],
-    "run_at": "document_idle"
-  }
- ],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "host_permissions": [
-    "*://*.youtube.com/*"
+    "*://*.youtube.com/*",
+    "http://localhost:3000/",
+    "ws://localhost:3000/"
   ],
   "permissions": [
     "activeTab",
