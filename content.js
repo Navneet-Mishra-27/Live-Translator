@@ -6,7 +6,10 @@ let workletNode = null;
 function connectToServer() {
     ws = new WebSocket("ws://localhost:3000");
     ws.onopen = () => console.log("Connected to backend server");
-    ws.onmessage = (event) => handleBackendMessage(event.data);
+    ws.onmessage = (event) => {
+    console.log("Backend message:", event.data);  // <- add this
+    handleBackendMessage(event.data);
+};
     ws.onclose = () => {
         console.log("Disconnected from backend, retrying in 3s...");
         setTimeout(connectToServer, 3000);
