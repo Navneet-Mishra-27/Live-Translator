@@ -1,17 +1,25 @@
 let audioContext = null;
 let workletNode = null;
 
-// ======= WEBSOCKET VIA BACKGROUND SCRIPT =======
-chrome.runtime.sendMessage({ type: "connect" }, (res) => {
-    console.log("Background WS connection:", res);
-});
+// ======= CONNECT TO BACKGROUND WS =======
+function connectToBackground() {
+    try {
+        chrome.runtime.sendMessage({ type: "connect" }, (res) => {
+            console.log("Background WS response:", res);
+        });
+    } catch (e) {
+        console.error("Could not connect to background:", e);
+        setTimeout(connectToBackground, 1000);
+    }
+}
+connectToBackground();
 
-// Send audio chunk to background script
+// Send audio chunks to background
 function sendAudioChunk(chunk) {
     chrome.runtime.sendMessage({ type: "send-audio", data: chunk });
 }
 
-// Receive backend messages
+// Handle messages from backend
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "backend-message") {
         handleBackendMessage(msg.data);
@@ -57,7 +65,6 @@ function createSubtitleOverlay(video) {
         userSelect: 'none',
         whiteSpace: 'nowrap'
     });
-
     container.appendChild(subtitleDiv);
 }
 
@@ -69,23 +76,22 @@ async function captureAudio(video) {
     audioContext = new AudioContext();
 
     const processorCode = `
-        class PCMProcessor extends AudioWorkletProcessor {
-            process(inputs) {
-                const input = inputs[0][0];
-                if (!input) return true;
-                const buffer = new ArrayBuffer(input.length * 2);
-                const view = new DataView(buffer);
-                for (let i = 0; i < input.length; i++) {
-                    let s = Math.max(-1, Math.min(1, input[i]));
-                    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-                }
-                this.port.postMessage(buffer);
-                return true;
+    class PCMProcessor extends AudioWorkletProcessor {
+        process(inputs) {
+            const input = inputs[0][0];
+            if (!input) return true;
+            const buffer = new ArrayBuffer(input.length * 2);
+            const view = new DataView(buffer);
+            for (let i = 0; i < input.length; i++) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
             }
+            this.port.postMessage(buffer);
+            return true;
         }
-        registerProcessor('pcm-processor', PCMProcessor);
+    }
+    registerProcessor('pcm-processor', PCMProcessor);
     `;
-
     const blob = new Blob([processorCode], { type: 'application/javascript' });
     const url = URL.createObjectURL(blob);
     await audioContext.audioWorklet.addModule(url);
@@ -118,7 +124,6 @@ function initializeForCurrentVideo() {
     captureAudio(video);
 }
 
-// Listen for YouTube SPA navigation and DOM changes
 window.addEventListener('yt-navigate-finish', initializeForCurrentVideo);
 window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
 const observer = new MutationObserver(initializeForCurrentVideo);
