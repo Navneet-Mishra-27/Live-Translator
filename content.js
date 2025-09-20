@@ -5,11 +5,15 @@ let workletNode = null;
 // ======= WEBSOCKET =======
 function connectToServer() {
     ws = new WebSocket("ws://localhost:3000");
-    ws.onopen = () => console.log("Connected to backend server");
+    ws.binaryType = "arraybuffer"; // ensures backend receives raw audio
+    ws.onopen = () => {
+        console.log("Connected to backend server");
+        window.ws = ws; // expose ws in DevTools for debugging
+    };
     ws.onmessage = (event) => {
-    console.log("Backend message:", event.data);  // <- add this
-    handleBackendMessage(event.data);
-};
+        console.log("Backend message:", event.data);
+        handleBackendMessage(event.data);
+    };
     ws.onclose = () => {
         console.log("Disconnected from backend, retrying in 3s...");
         setTimeout(connectToServer, 3000);
@@ -21,9 +25,13 @@ connectToServer();
 function handleBackendMessage(data) {
     try {
         const msg = JSON.parse(data);
-        if (msg.text) {
-            const subtitleDiv = document.getElementById('subtitleOverlay');
-            if (subtitleDiv) subtitleDiv.textContent = msg.text;
+        const subtitleDiv = document.getElementById('subtitleOverlay');
+        if (!subtitleDiv) return;
+
+        if (msg.text !== undefined) {
+            subtitleDiv.textContent = msg.text || "";
+        } else if (msg.error) {
+            subtitleDiv.textContent = "[Error receiving subtitles]";
         }
     } catch (e) {
         console.error("Failed to parse backend message:", e);
@@ -40,6 +48,7 @@ function createSubtitleOverlay(video) {
 
     const subtitleDiv = document.createElement('div');
     subtitleDiv.id = 'subtitleOverlay';
+    subtitleDiv.textContent = "[Listening...]"; // placeholder text
     Object.assign(subtitleDiv.style, {
         position: 'absolute',
         width: '100%',
@@ -65,7 +74,7 @@ async function captureAudio(video) {
         if (!video.duration || video.duration <= 1) return; // skip ads
         if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
 
-        audioContext = new AudioContext();
+        audioContext = new AudioContext({ sampleRate: 48000 }); // match server
 
         const processorCode = `
         class PCMProcessor extends AudioWorkletProcessor {
