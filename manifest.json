@@ -1,40 +1,40 @@
 {
   "manifest_version": 3,
-  "name": "Real-Time Video Translation",
+  "name": "Real-time Multilingual Video Subtitles",
   "version": "1.0",
-  "description": "Adds real-time subtitles and audio translation to videos.",
+  "description": "Captures video audio, sends to backend, and displays live translated subtitles.",
   
   "permissions": [
     "tabs",
-    "activeTab",
-    "scripting"
+    "scripting",
+    "activeTab"
   ],
-
+  
   "host_permissions": [
-    "<all_urls>"
+    "*://*/*"
   ],
 
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
 
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["*://*/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
 
   "action": {
-    "default_title": "Video Translation",
-    "default_popup": "hello.html"
+    "default_title": "Multilingual Subtitles",
+    "default_popup": "popup.html"
   },
 
-  "web_accessible_resources": [
-    {
-      "resources": ["*"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
 }
