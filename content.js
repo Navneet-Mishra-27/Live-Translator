@@ -5,33 +5,37 @@ let workletNode = null;
 // ======= WEBSOCKET =======
 function connectToServer() {
     ws = new WebSocket("ws://localhost:3000");
-    ws.binaryType = "arraybuffer"; // ensures backend receives raw audio
-    ws.onopen = () => {
-        console.log("Connected to backend server");
-        window.ws = ws; // expose ws in DevTools for debugging
-    };
+
+    ws.onopen = () => console.log("Connected to backend server");
+
     ws.onmessage = (event) => {
         console.log("Backend message:", event.data);
         handleBackendMessage(event.data);
     };
+
     ws.onclose = () => {
         console.log("Disconnected from backend, retrying in 3s...");
         setTimeout(connectToServer, 3000);
     };
+
+    ws.onerror = (err) => {
+        console.error("WebSocket error:", err);
+        ws.close();
+    };
 }
+
 connectToServer();
 
 // ======= HANDLE BACKEND MESSAGES =======
 function handleBackendMessage(data) {
     try {
         const msg = JSON.parse(data);
-        const subtitleDiv = document.getElementById('subtitleOverlay');
-        if (!subtitleDiv) return;
-
-        if (msg.text !== undefined) {
-            subtitleDiv.textContent = msg.text || "";
-        } else if (msg.error) {
-            subtitleDiv.textContent = "[Error receiving subtitles]";
+        if (msg.text) {
+            const subtitleDiv = document.getElementById('subtitleOverlay');
+            if (subtitleDiv) {
+                subtitleDiv.textContent = msg.text;
+                subtitleDiv.style.display = 'block';
+            }
         }
     } catch (e) {
         console.error("Failed to parse backend message:", e);
@@ -48,7 +52,6 @@ function createSubtitleOverlay(video) {
 
     const subtitleDiv = document.createElement('div');
     subtitleDiv.id = 'subtitleOverlay';
-    subtitleDiv.textContent = "[Listening...]"; // placeholder text
     Object.assign(subtitleDiv.style, {
         position: 'absolute',
         width: '100%',
@@ -63,7 +66,8 @@ function createSubtitleOverlay(video) {
         padding: '4px 8px',
         borderRadius: '4px',
         userSelect: 'none',
-        whiteSpace: 'nowrap'
+        whiteSpace: 'nowrap',
+        display: 'none', // hide until first subtitle
     });
     container.appendChild(subtitleDiv);
 }
@@ -71,10 +75,10 @@ function createSubtitleOverlay(video) {
 // ======= AUDIO CAPTURE WITH AUDIOWORKLET =======
 async function captureAudio(video) {
     try {
-        if (!video.duration || video.duration <= 1) return; // skip ads
+        if (!video.duration || video.duration <= 1) return;
         if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
 
-        audioContext = new AudioContext({ sampleRate: 48000 }); // match server
+        audioContext = new AudioContext();
 
         const processorCode = `
         class PCMProcessor extends AudioWorkletProcessor {
@@ -100,17 +104,16 @@ async function captureAudio(video) {
         const source = audioContext.createMediaElementSource(video);
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
-        // Send PCM audio chunks to backend
         workletNode.port.onmessage = (event) => {
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(event.data);
             }
         };
 
-        source.connect(workletNode);            // capture audio
-        source.connect(audioContext.destination); // hear audio
+        source.connect(workletNode);
+        source.connect(audioContext.destination);
 
-        console.log("Audio capture started (you should hear video now)");
+        console.log("Audio capture started");
 
         video.addEventListener('ended', () => {
             if (workletNode) workletNode.disconnect();
