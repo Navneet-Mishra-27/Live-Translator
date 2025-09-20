@@ -3,6 +3,14 @@
   "description": "Overlays subtitles and enables safe audio capture for translation/dubbing on YouTube videos.",
   "version": "1.0",
   "manifest_version": 3,
+  "permissions": [
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "ws://localhost:3000/*"
+  ],
   "action": {
     "default_icon": "icon.png",
     "default_popup": "hello.html"
@@ -13,14 +21,5 @@
       "js": ["content.js"],
       "run_at": "document_idle"
     }
-  ],
-  "host_permissions": [
-    "*://*.youtube.com/*",
-    "http://localhost:3000/",
-    "ws://localhost:3000/"
-  ],
-  "permissions": [
-    "activeTab",
-    "scripting"
   ]
 }
