@@ -61,54 +61,48 @@ function createSubtitleOverlay(video) {
 
 // ======= AUDIO CAPTURE =======
 async function captureAudio(video) {
-    try {
-        if (!video.duration || video.duration <= 1) return;
-        if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
+    if (!video.duration || video.duration <= 1) return;
+    if (workletNode || (audioContext && audioContext.state !== 'closed')) return;
 
-        audioContext = new AudioContext();
+    audioContext = new AudioContext();
 
-        const processorCode = `
-        class PCMProcessor extends AudioWorkletProcessor {
-            process(inputs) {
-                const input = inputs[0][0];
-                if (!input) return true;
-                const buffer = new ArrayBuffer(input.length * 2);
-                const view = new DataView(buffer);
-                for (let i = 0; i < input.length; i++) {
-                    let s = Math.max(-1, Math.min(1, input[i]));
-                    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-                }
-                this.port.postMessage(buffer);
-                return true;
+    const processorCode = `
+    class PCMProcessor extends AudioWorkletProcessor {
+        process(inputs) {
+            const input = inputs[0][0];
+            if (!input) return true;
+            const buffer = new ArrayBuffer(input.length * 2);
+            const view = new DataView(buffer);
+            for (let i = 0; i < input.length; i++) {
+                let s = Math.max(-1, Math.min(1, input[i]));
+                view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
             }
+            this.port.postMessage(buffer);
+            return true;
         }
-        registerProcessor('pcm-processor', PCMProcessor);
-        `;
-        const blob = new Blob([processorCode], { type: 'application/javascript' });
-        const url = URL.createObjectURL(blob);
-        await audioContext.audioWorklet.addModule(url);
-
-        const source = audioContext.createMediaElementSource(video);
-        workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-
-        workletNode.port.onmessage = (event) => {
-            sendAudioChunk(event.data);
-        };
-
-        source.connect(workletNode);
-        source.connect(audioContext.destination);
-
-        console.log("Audio capture started");
-
-        video.addEventListener('ended', () => {
-            if (workletNode) workletNode.disconnect();
-            if (audioContext) audioContext.close();
-            audioContext = null;
-            workletNode = null;
-        });
-    } catch (e) {
-        console.error("Audio capture failed:", e);
     }
+    registerProcessor('pcm-processor', PCMProcessor);
+    `;
+    const blob = new Blob([processorCode], { type: 'application/javascript' });
+    const url = URL.createObjectURL(blob);
+    await audioContext.audioWorklet.addModule(url);
+
+    const source = audioContext.createMediaElementSource(video);
+    workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+
+    workletNode.port.onmessage = (event) => sendAudioChunk(event.data);
+
+    source.connect(workletNode);
+    source.connect(audioContext.destination);
+
+    console.log("Audio capture started");
+
+    video.addEventListener('ended', () => {
+        if (workletNode) workletNode.disconnect();
+        if (audioContext) audioContext.close();
+        audioContext = null;
+        workletNode = null;
+    });
 }
 
 // ======= INITIALIZATION =======
@@ -121,7 +115,6 @@ function initializeForCurrentVideo() {
     captureAudio(video);
 }
 
-// SPA / playlist support
 window.addEventListener('yt-navigate-finish', initializeForCurrentVideo);
 window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
 const observer = new MutationObserver(initializeForCurrentVideo);
