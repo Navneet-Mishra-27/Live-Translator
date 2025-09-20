@@ -1,27 +1,32 @@
 {
-  "name": "Real-Time Multilingual Video Subtitle & Dubbing",
-  "description": "Overlays subtitles and enables safe audio capture for translation/dubbing on YouTube videos.",
-  "version": "1.0",
   "manifest_version": 3,
+  "name": "Real-time YouTube Translation",
+  "version": "1.0",
+  "description": "Captures YouTube video/audio and generates live subtitles.",
   "permissions": [
     "activeTab",
-    "scripting"
+    "scripting",
+    "storage"
   ],
-  "host_permissions": [
-    "*://*.youtube.com/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   },
   "content_scripts": [
     {
-      "matches": ["*://www.youtube.com/*"],
+      "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
-  "action": {
-    "default_icon": "icon.png",
-    "default_popup": "hello.html"
-  }
+  "web_accessible_resources": [
+    {
+      "resources": ["popup.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
