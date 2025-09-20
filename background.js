@@ -1,42 +1,52 @@
 let ws = null;
-let reconnectTimeout = 3000;
 
-// ======= CONNECT TO BACKEND =======
-function connectToServer() {
-    ws = new WebSocket("ws://localhost:3000"); // change to your server URL
+// Function to initialize WebSocket
+function initWebSocket(senderTabId) {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
+    ws = new WebSocket("ws://localhost:3000");
 
     ws.onopen = () => {
-        console.log("Connected to backend server");
+        console.log("WebSocket connected");
+        if (senderTabId) {
+            chrome.tabs.sendMessage(senderTabId, { type: "backend-message", data: JSON.stringify({ text: "WS connected" }) });
+        }
     };
 
     ws.onmessage = (event) => {
-        // Broadcast message to all tabs
-        chrome.tabs.query({}, (tabs) => {
-            tabs.forEach((tab) => {
-                chrome.tabs.sendMessage(tab.id, { type: "backend-message", data: event.data });
-            });
-        });
+        // Broadcast to the tab that requested connection
+        if (senderTabId) {
+            chrome.tabs.sendMessage(senderTabId, { type: "backend-message", data: event.data });
+        }
     };
 
     ws.onclose = () => {
-        console.log(`Disconnected from backend, retrying in ${reconnectTimeout / 1000}s...`);
-        setTimeout(connectToServer, reconnectTimeout);
+        console.log("WebSocket disconnected, retrying in 3s...");
+        ws = null;
+        setTimeout(() => initWebSocket(senderTabId), 3000);
     };
 
     ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
+        console.error("WS error:", err);
         ws.close();
     };
 }
 
-// Start initial connection
-connectToServer();
-
-// ======= HANDLE MESSAGES FROM CONTENT SCRIPT =======
+// Handle messages from content scripts
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!sender.tab) return; // ignore messages not from tabs
+
+    const tabId = sender.tab.id;
+
     if (msg.type === "connect") {
-        sendResponse({ status: ws?.readyState === 1 ? "connected" : "connecting" });
-    } else if (msg.type === "send-audio" && ws?.readyState === 1) {
-        ws.send(msg.data);
+        initWebSocket(tabId);
+        sendResponse({ status: "connection_attempted" });
+        return true; // keep channel open
+    }
+
+    if (msg.type === "send-audio") {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(msg.data);
+        }
     }
 });
