@@ -1,5 +1,32 @@
-<html>
-  <body>
-    <h1>Hello Tamanna</h1>
-  </body>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube Translator</title>
+  <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+  <h2>YouTube Video Player</h2>
+  <div id="player"></div>
+
+  <script>
+    let player;
+
+    function onYouTubeIframeAPIReady() {
+      player = new YT.Player('player', {
+        height: '360',
+        width: '640',
+        videoId: 'VIDEO_ID_HERE', // Replace with any video ID
+        events: {
+          'onReady': onPlayerReady
+        }
+      });
+    }
+
+    function onPlayerReady(event) {
+      console.log("Player ready, starting video...");
+      event.target.playVideo();
+    }
+  </script>
+</body>
 </html>
