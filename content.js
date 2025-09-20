@@ -1,27 +1,21 @@
-let ws;
 let audioContext = null;
 let workletNode = null;
 
-// ======= WEBSOCKET =======
-function connectToServer() {
-    ws = new WebSocket("ws://localhost:3000");
+// ======= WEBSOCKET VIA BACKGROUND SCRIPT =======
+chrome.runtime.sendMessage({ type: "connect" }, (res) => {
+    console.log("Background WS connection:", res);
+});
 
-    ws.onopen = () => console.log("✅ Connected to backend server");
-
-    ws.onmessage = (event) => {
-        console.log("📩 Backend message:", event.data);
-        handleBackendMessage(event.data);
-    };
-
-    ws.onclose = (ev) => {
-        console.warn(`❌ WebSocket closed. Code: ${ev.code}, Reason: ${ev.reason}`);
-        setTimeout(connectToServer, 3000);
-    };
-
-    ws.onerror = (err) => {
-        console.error("⚠️ WebSocket error event:", err);
-    };
+function sendAudioChunk(chunk) {
+    chrome.runtime.sendMessage({ type: "send-audio", data: chunk });
 }
+
+// Receive backend messages
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "backend-message") {
+        handleBackendMessage(msg.data);
+    }
+});
 
 // ======= HANDLE BACKEND MESSAGES =======
 function handleBackendMessage(data) {
@@ -98,13 +92,13 @@ async function captureAudio(video) {
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
         workletNode.port.onmessage = (event) => {
-            if (ws && ws.readyState === WebSocket.OPEN) ws.send(event.data);
+            sendAudioChunk(event.data);
         };
 
         source.connect(workletNode);
         source.connect(audioContext.destination);
 
-        console.log("🎙 Audio capture started");
+        console.log("Audio capture started");
 
         video.addEventListener('ended', () => {
             if (workletNode) workletNode.disconnect();
@@ -133,6 +127,5 @@ window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
 const observer = new MutationObserver(initializeForCurrentVideo);
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Start connection & initialization
-connectToServer();
+// Initial call
 initializeForCurrentVideo();
