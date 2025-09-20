@@ -6,25 +6,22 @@ let workletNode = null;
 function connectToServer() {
     ws = new WebSocket("ws://localhost:3000");
 
-    ws.onopen = () => console.log("Connected to backend server");
+    ws.onopen = () => console.log("✅ Connected to backend server");
 
     ws.onmessage = (event) => {
-        console.log("Backend message:", event.data);
+        console.log("📩 Backend message:", event.data);
         handleBackendMessage(event.data);
     };
 
-    ws.onclose = () => {
-        console.log("Disconnected from backend, retrying in 3s...");
+    ws.onclose = (ev) => {
+        console.warn(`❌ WebSocket closed. Code: ${ev.code}, Reason: ${ev.reason}`);
         setTimeout(connectToServer, 3000);
     };
 
     ws.onerror = (err) => {
-        console.error("WebSocket error:", err);
-        ws.close();
+        console.error("⚠️ WebSocket error event:", err);
     };
 }
-
-connectToServer();
 
 // ======= HANDLE BACKEND MESSAGES =======
 function handleBackendMessage(data) {
@@ -32,10 +29,7 @@ function handleBackendMessage(data) {
         const msg = JSON.parse(data);
         if (msg.text) {
             const subtitleDiv = document.getElementById('subtitleOverlay');
-            if (subtitleDiv) {
-                subtitleDiv.textContent = msg.text;
-                subtitleDiv.style.display = 'block';
-            }
+            if (subtitleDiv) subtitleDiv.textContent = msg.text;
         }
     } catch (e) {
         console.error("Failed to parse backend message:", e);
@@ -66,13 +60,12 @@ function createSubtitleOverlay(video) {
         padding: '4px 8px',
         borderRadius: '4px',
         userSelect: 'none',
-        whiteSpace: 'nowrap',
-        display: 'none', // hide until first subtitle
+        whiteSpace: 'nowrap'
     });
     container.appendChild(subtitleDiv);
 }
 
-// ======= AUDIO CAPTURE WITH AUDIOWORKLET =======
+// ======= AUDIO CAPTURE =======
 async function captureAudio(video) {
     try {
         if (!video.duration || video.duration <= 1) return;
@@ -105,15 +98,13 @@ async function captureAudio(video) {
         workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
         workletNode.port.onmessage = (event) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(event.data);
-            }
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(event.data);
         };
 
         source.connect(workletNode);
         source.connect(audioContext.destination);
 
-        console.log("Audio capture started");
+        console.log("🎙 Audio capture started");
 
         video.addEventListener('ended', () => {
             if (workletNode) workletNode.disconnect();
@@ -142,5 +133,6 @@ window.addEventListener('yt-page-data-updated', initializeForCurrentVideo);
 const observer = new MutationObserver(initializeForCurrentVideo);
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Initial call
+// Start connection & initialization
+connectToServer();
 initializeForCurrentVideo();
