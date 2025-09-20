@@ -1,31 +1,39 @@
 {
   "manifest_version": 3,
-  "name": "Real-time YouTube Translation",
+  "name": "Real-Time Video Translation",
   "version": "1.0",
-  "description": "Captures YouTube video/audio and generates live subtitles.",
+  "description": "Adds real-time subtitles and audio translation to videos.",
+  
   "permissions": [
+    "tabs",
     "activeTab",
-    "scripting",
-    "storage"
+    "scripting"
   ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png",
-      "128": "icon128.png"
-    }
+
+  "host_permissions": [
+    "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "background.js"
   },
+
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*"],
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
       "run_at": "document_idle"
     }
   ],
+
+  "action": {
+    "default_title": "Video Translation",
+    "default_popup": "popup.html"
+  },
+
   "web_accessible_resources": [
     {
-      "resources": ["popup.html"],
+      "resources": ["*"],
       "matches": ["<all_urls>"]
     }
   ]
