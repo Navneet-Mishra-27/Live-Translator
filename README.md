@@ -4,7 +4,7 @@ A full-stack application that provides live transcription, multilingual translat
 Demo
 **
 
-(Note to user: You should record a short screen capture of your project working and convert it to a GIF. This is the most impactful part of a README. You can use free tools like GIPHY Capture or ScreenToGif.)
+
 
 ► How It Works
 The application consists of two main components: a Chrome Extension frontend and a Node.js backend. They communicate in real-time using WebSockets.
