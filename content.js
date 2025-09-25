@@ -68,7 +68,7 @@ function playNextAudio() {
       console.log("Audio playback started successfully.");
     }).catch(error => {
       console.error("Audio playback failed.", error);
-      isPlaying = false; 
+      isPlaying = false;
     });
   }
 
@@ -237,4 +237,3 @@ observer.observe(document.body, { childList: true, subtree: true });
 
 // Initial call
 setTimeout(initializeForCurrentVideo, 1500);
-
