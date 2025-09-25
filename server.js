@@ -6,6 +6,8 @@ import { WebSocketServer } from "ws";
 import wav from "wav";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import fs from 'fs'; // Import the file system module
+import path from 'path'; // Import the path module
 
 // --- Initialization ---
 const app = express();
@@ -52,7 +54,7 @@ wss.on("connection", (ws) => {
   let audioBuffer = [];
   let accumulationTimer = null;
   let targetLanguage = "Spanish";
-  let chunkCounter = 0; // The new "warm-up" counter
+  let chunkCounter = 0; 
 
   ws.on("message", async (message) => {
     try {
@@ -71,18 +73,20 @@ wss.on("connection", (ws) => {
         const currentBuffer = [...audioBuffer];
         audioBuffer = [];
         accumulationTimer = null;
-        chunkCounter++; // Increment the counter for each processed chunk
-
-        // --- THE FINAL FIX: Ignore the first two chunks ---
-        if (chunkCounter <= 2) {
-            console.log(`Ignoring warm-up chunk #${chunkCounter}...`);
-            return;
-        }
+        chunkCounter++;
 
         if (currentBuffer.length === 0) return;
 
         try {
           const wavBuffer = await pcmChunksToWavBuffer(currentBuffer);
+          
+          // --- DIAGNOSTIC STEP: Save the audio to a file ---
+          const timestamp = Date.now();
+          const filePath = path.join(process.cwd(), `debug_audio_${timestamp}.wav`);
+          fs.writeFileSync(filePath, wavBuffer);
+          console.log(`Saved audio chunk to ${filePath}`);
+          // --- END DIAGNOSTIC STEP ---
+
           if (wavBuffer.length < 2000) return;
 
           const audioPart = { inlineData: { mimeType: 'audio/wav', data: wavBuffer.toString('base64') } };
