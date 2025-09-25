@@ -163,56 +163,61 @@ function createUiElements(video) {
     startButton.style.backgroundColor = '#00c853'; // Green
     startButton.disabled = true;
 
-    // Show subtitles and start audio capture
     subtitleDiv.style.visibility = 'visible';
     captureAudio(video);
-  }, { once: true }); // The listener only needs to fire once
+  }, { once: true });
 }
 
 async function captureAudio(video) {
-  if (!video.duration || video.duration <= 1) return;
-  if (workletNode || (audioContext && audioContext.state !== "closed")) return;
+    // --- FINAL FIX: Mute original video and ensure proper connection ---
+    video.muted = true;
 
-  try {
-    audioContext = new AudioContext();
+    if (workletNode || (audioContext && audioContext.state !== "closed")) return;
 
-    const processorCode = `
-      class PCMProcessor extends AudioWorkletProcessor {
-          process(inputs) {
-              const input = inputs[0][0];
-              if (!input) return true;
-              const buffer = new ArrayBuffer(input.length * 2);
-              const view = new DataView(buffer);
-              for (let i = 0; i < input.length; i++) {
-                  let s = Math.max(-1, Math.min(1, input[i]));
-                  view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-              }
-              this.port.postMessage(buffer);
-              return true;
-          }
-      }
-      registerProcessor('pcm-processor', PCMProcessor);
-      `;
-    const blob = new Blob([processorCode], { type: "application/javascript" });
-    const url = URL.createObjectURL(blob);
-    await audioContext.audioWorklet.addModule(url);
+    try {
+        audioContext = new AudioContext();
+        const source = audioContext.createMediaElementSource(video);
 
-    const source = audioContext.createMediaElementSource(video);
-    workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
-    workletNode.port.onmessage = (event) => sendAudioChunk(event.data);
-    source.connect(workletNode).connect(audioContext.destination);
+        const processorCode = `
+        class PCMProcessor extends AudioWorkletProcessor {
+            process(inputs) {
+                const input = inputs[0][0];
+                if (!input) return true;
+                const buffer = new ArrayBuffer(input.length * 2);
+                const view = new DataView(buffer);
+                for (let i = 0; i < input.length; i++) {
+                    let s = Math.max(-1, Math.min(1, input[i]));
+                    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+                }
+                this.port.postMessage(buffer);
+                return true;
+            }
+        }
+        registerProcessor('pcm-processor', PCMProcessor);
+        `;
+        const blob = new Blob([processorCode], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        await audioContext.audioWorklet.addModule(url);
 
-    console.log("Audio capture started after user interaction.");
-    video.muted = false; // Ensure video sound is on
-    video.play();
+        workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
+        workletNode.port.onmessage = (event) => sendAudioChunk(event.data);
 
-    video.addEventListener("ended", () => {
-      if (workletNode) workletNode.disconnect();
-      if (audioContext) audioContext.close();
-    });
-  } catch (e) {
-      console.error("Error capturing audio:", e);
-  }
+        // Connect the source to the worklet AND the destination
+        source.connect(workletNode);
+        source.connect(audioContext.destination);
+
+        console.log("Audio capture started with robust connection.");
+        video.play();
+
+        video.addEventListener("ended", () => {
+            if (workletNode) workletNode.disconnect();
+            if (audioContext) audioContext.close();
+        });
+    } catch (e) {
+        console.error("Error capturing audio:", e);
+        // Unmute if there's an error
+        video.muted = false;
+    }
 }
 
 function initializeForCurrentVideo() {
