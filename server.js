@@ -75,14 +75,20 @@ wss.on("connection", (ws) => {
         try {
           // 1. Convert audio buffer to WAV
           const wavBuffer = await pcmChunksToWavBuffer(currentBuffer);
-          if (wavBuffer.length < 1000) return;
+          if (wavBuffer.length < 2000) return; // Increased buffer size to avoid tiny clips
 
-          // 2. Transcription with Gemini
+          // 2. Transcription with Gemini (with improved prompt)
           const audioPart = { inlineData: { mimeType: 'audio/wav', data: wavBuffer.toString('base64') } };
-          const transcriptionResult = await geminiModel.generateContent([ "Transcribe this audio.", audioPart ]);
+          // This prompt instructs the model to ignore non-speech sounds.
+          const transcriptionPrompt = "Transcribe the speech from this audio. If the audio contains only silence, music, or non-speech sounds, please respond with an empty string.";
+          const transcriptionResult = await geminiModel.generateContent([ transcriptionPrompt, audioPart ]);
           const transcribedText = transcriptionResult.response.text().trim();
+          
+          if (!transcribedText) {
+            console.log("Filtered out non-speech audio.");
+            return; // Exit if no speech was detected
+          }
           console.log("Transcribed:", transcribedText);
-          if (!transcribedText) return;
 
           // 3. Translation with Gemini
           const translationResult = await geminiModel.generateContent(`Translate the following text to ${targetLanguage}: ${transcribedText}`);
@@ -117,3 +123,5 @@ wss.on("connection", (ws) => {
 // --- Start Server ---
 const PORT = 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+
+// server.js
