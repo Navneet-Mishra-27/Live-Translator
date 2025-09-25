@@ -4,7 +4,6 @@ let senderTabId = null;
 // Function to initialize WebSocket
 function initWebSocket() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-
   ws = new WebSocket("ws://localhost:3000");
 
   ws.onopen = () => {
@@ -28,8 +27,11 @@ function initWebSocket() {
   };
 
   ws.onerror = (err) => {
-    console.error("WS error:", err);
-    ws.close();
+    // ===== THE FIX: Log the actual error message =====
+    console.error("WS error:", err.message);
+    if (ws) {
+        ws.close();
+    }
   };
 }
 
