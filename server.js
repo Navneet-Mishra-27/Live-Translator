@@ -52,6 +52,7 @@ wss.on("connection", (ws) => {
   let audioBuffer = [];
   let accumulationTimer = null;
   let targetLanguage = "Spanish";
+  let chunkCounter = 0; // The new "warm-up" counter
 
   ws.on("message", async (message) => {
     try {
@@ -70,35 +71,40 @@ wss.on("connection", (ws) => {
         const currentBuffer = [...audioBuffer];
         audioBuffer = [];
         accumulationTimer = null;
+        chunkCounter++; // Increment the counter for each processed chunk
+
+        // --- THE FINAL FIX: Ignore the first two chunks ---
+        if (chunkCounter <= 2) {
+            console.log(`Ignoring warm-up chunk #${chunkCounter}...`);
+            return;
+        }
+
         if (currentBuffer.length === 0) return;
 
         try {
-          // 1. Convert audio buffer to WAV
           const wavBuffer = await pcmChunksToWavBuffer(currentBuffer);
-          if (wavBuffer.length < 2000) return; // Increased buffer size to avoid tiny clips
+          if (wavBuffer.length < 2000) return;
 
-          // 2. Transcription with Gemini (with improved prompt)
           const audioPart = { inlineData: { mimeType: 'audio/wav', data: wavBuffer.toString('base64') } };
-          // This prompt instructs the model to ignore non-speech sounds.
-          const transcriptionPrompt = "Transcribe the speech from this audio. If the audio contains only silence, music, or non-speech sounds, please respond with an empty string.";
+          
+          const transcriptionPrompt = "Transcribe only the spoken words from this audio. Ignore all music, silence, and non-speech sounds. If no words are spoken, respond with an empty string.";
           const transcriptionResult = await geminiModel.generateContent([ transcriptionPrompt, audioPart ]);
           const transcribedText = transcriptionResult.response.text().trim();
           
           if (!transcribedText) {
             console.log("Filtered out non-speech audio.");
-            return; // Exit if no speech was detected
+            return; 
           }
           console.log("Transcribed:", transcribedText);
 
-          // 3. Translation with Gemini
-          const translationResult = await geminiModel.generateContent(`Translate the following text to ${targetLanguage}: ${transcribedText}`);
+          const translationPrompt = `Translate the following text to ${targetLanguage}. Provide only the translated text, without any explanations or conversational filler. Text: "${transcribedText}"`;
+          const translationResult = await geminiModel.generateContent(translationPrompt);
           const translatedText = translationResult.response.text().trim();
           console.log("Translated:", translatedText);
           
-          // 4. Text-to-Speech with Google Cloud TTS
           const [ttsResponse] = await textToSpeechClient.synthesizeSpeech({
             input: { text: translatedText },
-            voice: { languageCode: 'en-US', ssmlGender: 'NEUTRAL' }, // You can change this voice
+            voice: { languageCode: 'en-US', ssmlGender: 'NEUTRAL' },
             audioConfig: { audioEncoding: 'MP3' },
           });
           const audioBase64 = ttsResponse.audioContent.toString('base64');
@@ -112,7 +118,7 @@ wss.on("connection", (ws) => {
           console.error("Error during Google AI API call:", err.message);
           console.error("========================================");
         }
-      }, 5000);
+      }, 2500);
     }
   });
 
@@ -124,4 +130,3 @@ wss.on("connection", (ws) => {
 const PORT = 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
 
-// server.js
