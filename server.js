@@ -1,135 +1,120 @@
-let subtitleDiv = null;
-let audioQueue = [];
-let isPlaying = false;
+// server.js
+import "dotenv/config";
+import express from "express";
+import http from "http";
+import { WebSocketServer } from "ws";
+import wav from "wav";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 
-// Handle messages from backend (relayed by background script)
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "backend-message") {
-    handleBackendMessage(msg.data);
-  }
+// --- Initialization ---
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// Check for API Key at startup
+if (!process.env.GOOGLE_API_KEY) {
+  console.error("FATAL ERROR: GOOGLE_API_KEY is not set in your .env file.");
+  process.exit(1);
+}
+
+// Initialize Google AI Clients
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+const textToSpeechClient = new TextToSpeechClient();
+
+app.get("/", (req, res) => {
+  res.send("Subtitle backend with Google Gemini is running!");
 });
 
-// ======= HANDLE BACKEND MESSAGES =======
-function handleBackendMessage(data) {
-  try {
-    const msg = JSON.parse(data);
-    if (msg.translatedText && msg.audioData) {
-      if (subtitleDiv) {
-        subtitleDiv.textContent = msg.translatedText;
-      }
-      const audioBlob = base64toBlob(msg.audioData, 'audio/mpeg');
-      const audioUrl = URL.createObjectURL(audioBlob);
-      audioQueue.push(audioUrl);
-      playNextAudio();
-    }
-  } catch (e) {
-    console.error("Failed to parse backend message:", e);
-  }
-}
-
-function playNextAudio() {
-  if (isPlaying || audioQueue.length === 0) {
-    return;
-  }
-  isPlaying = true;
-  const audioUrl = audioQueue.shift();
-  const audio = new Audio(audioUrl);
-  audio.play().catch(error => {
-    console.error("Audio playback failed:", error);
-    isPlaying = false; // Allow next audio to play if this one fails
-  });
-  audio.onended = () => {
-    isPlaying = false;
-    playNextAudio();
-  };
-}
-
-function base64toBlob(base64Data, contentType) {
+// --- Helper Functions ---
+function pcmChunksToWavBuffer(chunks) {
+  return new Promise((resolve, reject) => {
     try {
-        const byteCharacters = atob(base64Data);
-        const byteArrays = [];
-        for (let offset = 0; offset < byteCharacters.length; offset += 512) {
-            const slice = byteCharacters.slice(offset, offset + 512);
-            const byteNumbers = new Array(slice.length);
-            for (let i = 0; i < slice.length; i++) {
-                byteNumbers[i] = slice.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            byteArrays.push(byteArray);
-        }
-        return new Blob(byteArrays, {type: contentType});
+      const writer = new wav.Writer({ channels: 1, sampleRate: 44100, bitDepth: 16 });
+      const buffers = [];
+      writer.on("data", (data) => buffers.push(data));
+      writer.on("finish", () => resolve(Buffer.concat(buffers)));
+      writer.on("error", reject);
+      for (const chunk of chunks) {
+        writer.write(Buffer.from(chunk));
+      }
+      writer.end();
     } catch (e) {
-        // Return an empty blob if decoding fails
-        return new Blob([]);
+      reject(e);
     }
-}
-
-// ======= UI & INITIALIZATION =======
-function createUiElements(video) {
-  // Prevent duplicate buttons
-  if (document.getElementById("liveTranslator-start-button")) return;
-
-  const container = document.querySelector(".html5-video-player") || video.parentElement;
-  if (!container) return;
-  container.style.position = 'relative';
-
-  // Create the "Start" button
-  const startButton = document.createElement('button');
-  startButton.id = 'liveTranslator-start-button';
-  startButton.textContent = 'Start Live Translation';
-  Object.assign(startButton.style, {
-      position: 'absolute', top: '10px', left: '10px', zIndex: '2147483647',
-      padding: '10px 15px', backgroundColor: '#ff0000', color: 'white',
-      border: 'none', borderRadius: '5px', cursor: 'pointer',
-      fontSize: '14px', fontWeight: 'bold'
   });
-  container.appendChild(startButton);
-
-  // Create the subtitle overlay (initially hidden)
-  subtitleDiv = document.createElement("div");
-  subtitleDiv.id = "subtitleOverlay";
-  Object.assign(subtitleDiv.style, {
-    position: "absolute", width: "80%", left: "10%", bottom: "10%",
-    textAlign: "center", color: "white", fontSize: "26px", fontWeight: "bold",
-    textShadow: "2px 2px 4px black", pointerEvents: "none", zIndex: "2147483647",
-    backgroundColor: "rgba(0,0,0,0.5)", padding: "10px", borderRadius: "8px",
-    visibility: 'hidden'
-  });
-  container.appendChild(subtitleDiv);
-
-  // Add the click listener
-  startButton.addEventListener('click', () => {
-    console.log("Start button clicked. Muting video and requesting capture from background script.");
-    video.muted = true; // Mute the original video to prevent echo
-    
-    // Tell the background script to start capturing this tab's audio
-    chrome.runtime.sendMessage({ type: 'startCapture' });
-    
-    // Update button state
-    startButton.textContent = 'Translation Active';
-    startButton.style.backgroundColor = '#00c853';
-    startButton.disabled = true;
-    subtitleDiv.style.visibility = 'visible';
-  }, { once: true });
 }
 
-function initializeForCurrentVideo() {
-  const video = document.querySelector("video");
-  if (!video || video.dataset.hasTranslatorUi === "true") return;
+// --- WebSocket Logic ---
+wss.on("connection", (ws) => {
+  console.log("Client connected via WebSocket");
+  let audioBuffer = [];
+  let accumulationTimer = null;
+  let targetLanguage = "Spanish";
 
-  video.dataset.hasTranslatorUi = "true";
-  createUiElements(video);
-}
-
-// Use a MutationObserver to detect when a new video is loaded on the page (e.g., on YouTube)
-const observer = new MutationObserver(() => {
-    const video = document.querySelector('video');
-    if (video && video.dataset.hasTranslatorUi !== "true") {
-        initializeForCurrentVideo();
+  ws.on("message", async (message) => {
+    try {
+      const data = JSON.parse(message);
+      if (data.type === 'setLanguage' && data.language) {
+        targetLanguage = data.language;
+        console.log(`Target language set to: ${targetLanguage}`);
+        return;
+      }
+    } catch (e) {
+      audioBuffer.push(message);
     }
+
+    if (!accumulationTimer) {
+      accumulationTimer = setTimeout(async () => {
+        const currentBuffer = [...audioBuffer];
+        audioBuffer = [];
+        accumulationTimer = null;
+        if (currentBuffer.length === 0) return;
+
+        try {
+          // 1. Convert audio buffer to WAV
+          const wavBuffer = await pcmChunksToWavBuffer(currentBuffer);
+          if (wavBuffer.length < 1000) return;
+
+          // 2. Transcription with Gemini
+          const audioPart = { inlineData: { mimeType: 'audio/wav', data: wavBuffer.toString('base64') } };
+          const transcriptionResult = await geminiModel.generateContent([ "Transcribe this audio.", audioPart ]);
+          const transcribedText = transcriptionResult.response.text().trim();
+          console.log("Transcribed:", transcribedText);
+          if (!transcribedText) return;
+
+          // 3. Translation with Gemini
+          const translationResult = await geminiModel.generateContent(`Translate the following text to ${targetLanguage}: ${transcribedText}`);
+          const translatedText = translationResult.response.text().trim();
+          console.log("Translated:", translatedText);
+          
+          // 4. Text-to-Speech with Google Cloud TTS
+          const [ttsResponse] = await textToSpeechClient.synthesizeSpeech({
+            input: { text: translatedText },
+            voice: { languageCode: 'en-US', ssmlGender: 'NEUTRAL' }, // You can change this voice
+            audioConfig: { audioEncoding: 'MP3' },
+          });
+          const audioBase64 = ttsResponse.audioContent.toString('base64');
+          
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ translatedText, audioData: audioBase64 }));
+          }
+
+        } catch (err) {
+          console.error("========================================");
+          console.error("Error during Google AI API call:", err.message);
+          console.error("========================================");
+        }
+      }, 5000);
+    }
+  });
+
+  ws.on("close", () => console.log("Client disconnected"));
+  ws.onerror = (err) => console.error("WebSocket server error:", err.message);
 });
-observer.observe(document.body, { childList: true, subtree: true });
 
-// Initial check
-setTimeout(initializeForCurrentVideo, 1500);
+// --- Start Server ---
+const PORT = 3000;
+server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
 
