@@ -3,30 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <title>YouTube Translator</title>
-  <script src="https://www.youtube.com/iframe_api"></script>
+  <style>
+    body {
+      width: 200px;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
-  <h2>YouTube Video Player</h2>
-  <div id="player"></div>
-
-  <script>
-    let player;
-
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('player', {
-        height: '360',
-        width: '640',
-        videoId: 'VIDEO_ID_HERE', // Replace with any video ID
-        events: {
-          'onReady': onPlayerReady
-        }
-      });
-    }
-
-    function onPlayerReady(event) {
-      console.log("Player ready, starting video...");
-      event.target.playVideo();
-    }
-  </script>
+  <h2>Select Language</h2>
+  <select id="language-select">
+    <option value="Spanish">Spanish</option>
+    <option value="French">French</option>
+    <option value="German">German</option>
+    <option value="Hindi">Hindi</option>
+    <option value="Japanese">Japanese</option>
+  </select>
+  <script src="popup.js"></script>
 </body>
 </html>
