@@ -60,40 +60,27 @@ function playNextAudio() {
   }
   isPlaying = true;
   const audioUrl = audioQueue.shift();
-  console.log("Attempting to play audio from URL:", audioUrl);
-
   const audio = new Audio(audioUrl);
 
-  // --- THIS IS THE CRITICAL FIX ---
-  // The play() function returns a Promise. We need to catch any errors.
   const playPromise = audio.play();
   if (playPromise !== undefined) {
     playPromise.then(_ => {
-      // Automatic playback started!
       console.log("Audio playback started successfully.");
     }).catch(error => {
-      // Automatic playback was prevented.
-      console.error("Audio playback failed. This is likely due to the browser's autoplay policy.", error);
-      // As a fallback, try to unmute the main video on the page
-      const video = document.querySelector('video');
-      if (video) {
-        video.muted = false;
-        console.log("Attempted to unmute the main video to enable audio context.");
-      }
-      isPlaying = false; // Allow the next item to be tried
+      console.error("Audio playback failed.", error);
+      isPlaying = false; 
     });
   }
 
   audio.onended = () => {
-    console.log("Audio playback finished.");
     isPlaying = false;
     playNextAudio();
   };
 
   audio.onerror = (e) => {
-    console.error("An error occurred with the audio element itself:", e);
+    console.error("An error occurred with the audio element:", e);
     isPlaying = false;
-    playNextAudio(); // Try the next in queue even if this one fails
+    playNextAudio();
   }
 }
 
@@ -113,43 +100,75 @@ function base64toBlob(base64Data, contentType) {
         return new Blob(byteArrays, {type: contentType});
     } catch (e) {
         console.error("Error decoding base64 string:", e);
-        return new Blob([]); // Return an empty blob on error
+        return new Blob([]);
     }
 }
 
+// ======= UI & INITIALIZATION =======
 
-// ======= CREATE SUBTITLE OVERLAY =======
-function createSubtitleOverlay(video) {
-  if (document.getElementById("subtitleOverlay")) return;
+function createUiElements(video) {
+  if (document.getElementById("liveTranslator-start-button")) return;
 
-  const container =
-    document.querySelector(".html5-video-player") || video.parentElement;
+  const container = document.querySelector(".html5-video-player") || video.parentElement;
   if (!container) return;
-  container.style.position = "relative";
+  container.style.position = 'relative';
 
+  // Create Start Button
+  const startButton = document.createElement('button');
+  startButton.id = 'liveTranslator-start-button';
+  startButton.textContent = 'Start Live Translation';
+  Object.assign(startButton.style, {
+      position: 'absolute',
+      top: '10px',
+      left: '10px',
+      zIndex: '2147483647',
+      padding: '10px 15px',
+      backgroundColor: '#ff0000',
+      color: 'white',
+      border: 'none',
+      borderRadius: '5px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: 'bold'
+  });
+  
+  container.appendChild(startButton);
+
+  // Create Subtitle Overlay (initially hidden)
   subtitleDiv = document.createElement("div");
   subtitleDiv.id = "subtitleOverlay";
   Object.assign(subtitleDiv.style, {
     position: "absolute",
-    width: "100%",
-    bottom: "15%",
+    width: "80%",
+    left: "10%",
+    bottom: "10%",
     textAlign: "center",
-    color: "yellow",
-    fontSize: "28px",
-    textShadow: "2px 2px 6px black",
+    color: "white",
+    fontSize: "26px",
+    fontWeight: "bold",
+    textShadow: "2px 2px 4px black",
     pointerEvents: "none",
     zIndex: "2147483647",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    padding: "4px 8px",
-    borderRadius: "4px",
-    userSelect: "none",
-    whiteSpace: "pre-wrap",
-    wordWrap: "break-word"
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: "10px",
+    borderRadius: "8px",
+    visibility: 'hidden' // Initially hidden
   });
   container.appendChild(subtitleDiv);
+
+  // Add event listener to the button
+  startButton.addEventListener('click', () => {
+    console.log("Start button clicked by user.");
+    startButton.textContent = 'Translation Active';
+    startButton.style.backgroundColor = '#00c853'; // Green
+    startButton.disabled = true;
+
+    // Show subtitles and start audio capture
+    subtitleDiv.style.visibility = 'visible';
+    captureAudio(video);
+  }, { once: true }); // The listener only needs to fire once
 }
 
-// ======= AUDIO CAPTURE =======
 async function captureAudio(video) {
   if (!video.duration || video.duration <= 1) return;
   if (workletNode || (audioContext && audioContext.state !== "closed")) return;
@@ -180,62 +199,42 @@ async function captureAudio(video) {
 
     const source = audioContext.createMediaElementSource(video);
     workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
-
     workletNode.port.onmessage = (event) => sendAudioChunk(event.data);
+    source.connect(workletNode).connect(audioContext.destination);
 
-    source.connect(workletNode);
-    source.connect(audioContext.destination);
-
-    console.log("Audio capture started");
+    console.log("Audio capture started after user interaction.");
+    video.muted = false; // Ensure video sound is on
+    video.play();
 
     video.addEventListener("ended", () => {
       if (workletNode) workletNode.disconnect();
       if (audioContext) audioContext.close();
-      audioContext = null;
-      workletNode = null;
     });
   } catch (e) {
       console.error("Error capturing audio:", e);
   }
 }
 
-// ======= INITIALIZATION =======
 function initializeForCurrentVideo() {
   const video = document.querySelector("video");
-  if (!video || video.dataset.hasSubtitleOverlay === "true") return;
+  if (!video || video.dataset.hasTranslatorUi === "true") return;
 
-  video.dataset.hasSubtitleOverlay = "true";
-  createSubtitleOverlay(video);
-  
-  // A common trick to enable autoplay is to first mute and then unmute the video
-  const originalMuted = video.muted;
-  video.muted = true;
-  video.play().then(() => {
-    video.muted = originalMuted;
-    captureAudio(video);
-  }).catch(e => {
-    console.error("Video play() failed, audio capture might not work.", e);
-    // Still try to capture audio, it might work if user plays manually
-    captureAudio(video);
-  });
+  video.dataset.hasTranslatorUi = "true";
+  createUiElements(video);
 }
 
 // Re-initialize when the user navigates on sites like YouTube
 window.addEventListener('yt-navigate-finish', initializeForCurrentVideo);
-window.addEventListener('spfdone', initializeForCurrentVideo); // Older YouTube event
+window.addEventListener('spfdone', initializeForCurrentVideo);
 
-const observer = new MutationObserver((mutations) => {
-    for(let mutation of mutations) {
-        if (mutation.type === 'childList') {
-            const video = document.querySelector('video');
-            if (video && video.dataset.hasSubtitleOverlay !== "true") {
-                initializeForCurrentVideo();
-                return; // Found a new video, no need to keep observing this batch
-            }
-        }
+const observer = new MutationObserver(() => {
+    const video = document.querySelector('video');
+    if (video && video.dataset.hasTranslatorUi !== "true") {
+        initializeForCurrentVideo();
     }
 });
 observer.observe(document.body, { childList: true, subtree: true });
 
 // Initial call
-setTimeout(initializeForCurrentVideo, 1000);
+setTimeout(initializeForCurrentVideo, 1500);
+
