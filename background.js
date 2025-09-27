@@ -6,15 +6,18 @@ let targetTabId = null;
 
 function initWebSocket() {
   if (ws && ws.readyState === WebSocket.OPEN) {
+    console.log('WebSocket is already open.');
     return;
   }
 
+  console.log('Initializing WebSocket connection...');
   ws = new WebSocket('ws://localhost:3000');
 
   ws.onopen = () => {
-    console.log('WebSocket connected');
+    console.log('WebSocket connected successfully.');
     chrome.storage.local.get('targetLanguage', (data) => {
       if (data.targetLanguage) {
+        console.log(`Setting target language to: ${data.targetLanguage}`);
         ws.send(JSON.stringify({ type: 'setLanguage', language: data.targetLanguage }));
       }
     });
@@ -22,12 +25,12 @@ function initWebSocket() {
 
   ws.onmessage = (event) => {
     if (targetTabId) {
-      chrome.tabs.sendMessage(targetTabId, { type: 'backend-message', data: event.data });
+      chrome.tabs.sendMessage(targetTabid, { type: 'backend-message', data: event.data });
     }
   };
 
   ws.onclose = () => {
-    console.log('WebSocket disconnected');
+    console.log('WebSocket disconnected.');
     ws = null;
     stopCapture();
   };
@@ -45,6 +48,12 @@ async function startCapture(tabId) {
   initWebSocket();
 
   try {
+    if (!chrome.tabCapture || typeof chrome.tabCapture.capture !== 'function') {
+      console.error('chrome.tabCapture.capture is not available. Ensure the "tabCapture" permission is in manifest.json and this is run from a user gesture.');
+      return;
+    }
+
+    console.log('Starting tab capture...');
     const stream = await chrome.tabCapture.capture({ audio: true, video: false });
     streamSource = stream;
 
@@ -60,6 +69,7 @@ async function startCapture(tabId) {
       }
     };
     source.connect(workletNode);
+    console.log('Tab audio capture started successfully.');
   } catch (error) {
     console.error('Error starting tab capture:', error.message);
     stopCapture();
@@ -85,6 +95,7 @@ function stopCapture() {
   }
   targetTabId = null;
   chrome.storage.local.set({ isCapturing: false });
+  console.log("Audio capture stopped.");
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
