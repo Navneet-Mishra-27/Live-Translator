@@ -1,118 +1,62 @@
-let ws = null;
-let audioContext = null;
-let streamSource = null;
-let workletNode = null;
-let targetTabId = null;
+// The unique name of our native messaging host.
+const hostName = 'com.your_company.live_translation';
 
-// Function to start the capture process
-async function startCapture(tab) {
-  if (targetTabId) {
-    console.log('Capture is already active.');
-    return;
-  }
-  targetTabId = tab.id;
+// A reference to the port, which will be established when needed.
+let port = null;
 
-  try {
-    const stream = await chrome.tabCapture.capture({ audio: true, video: false });
-    streamSource = stream;
-
-    initWebSocket(); // Initialize WebSocket connection
-
-    audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
-
-    await audioContext.audioWorklet.addModule('audio-processor.js');
-
-    workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-    workletNode.port.onmessage = (event) => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(event.data);
-      }
-    };
-    source.connect(workletNode);
-
-    chrome.tabs.update(targetTabId, { muted: true });
-    chrome.storage.local.set({ isCapturing: true });
-    chrome.action.setTitle({ tabId: targetTabId, title: 'Stop Translation' });
-    console.log('Tab audio capture started successfully.');
-
-  } catch (error) {
-    console.error('Error starting tab capture:', error.message);
-    stopCapture(); // Clean up if something goes wrong
+// Function to send a message to the native host.
+function sendMessageToNativeHost(message) {
+  if (port) {
+    port.postMessage(message);
+    console.log('Sent message to native host:', message);
+  } else {
+    console.error('Connection to native host is not established.');
   }
 }
 
-// Function to stop the capture process
-function stopCapture() {
-  if (streamSource) {
-    streamSource.getTracks().forEach(track => track.stop());
-    streamSource = null;
-  }
-  if (workletNode) {
-    workletNode.port.close();
-    workletNode.disconnect();
-    workletNode = null;
-  }
-  if (audioContext) {
-    audioContext.close();
-    audioContext = null;
-  }
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
-  if (targetTabId) {
-    chrome.tabs.update(targetTabId, { muted: false });
-    chrome.action.setTitle({ tabId: targetTabId, title: 'Start Translation' });
-  }
-  chrome.storage.local.set({ isCapturing: false });
-  targetTabId = null;
-  console.log("Audio capture stopped.");
-}
+// Function to establish the connection.
+function connectToNativeHost() {
+  console.log(`Connecting to native host: ${hostName}`);
+  port = chrome.runtime.connectNative(hostName);
 
-
-// Main logic: Handle clicks on the extension icon
-chrome.action.onClicked.addListener((tab) => {
-  chrome.storage.local.get('isCapturing', (data) => {
-    if (data.isCapturing) {
-      stopCapture();
-    } else {
-      startCapture(tab);
-    }
+  // Listener for messages received from the native host.
+  port.onMessage.addListener((message) => {
+    console.log('Received message from native host:', message);
+    // TODO: Process the response from the Python script.
+    // For example, forward it to a content script or popup.
   });
-});
 
-
-// WebSocket connection logic
-function initWebSocket() {
-  if (ws && ws.readyState !== WebSocket.CLOSED) {
-    return;
-  }
-
-  ws = new WebSocket('ws://localhost:3000');
-
-  ws.onopen = () => {
-    console.log('WebSocket connected');
-    chrome.storage.local.get('targetLanguage', (data) => {
-      if (data.targetLanguage) {
-        ws.send(JSON.stringify({ type: 'setLanguage', language: data.targetLanguage }));
-      }
-    });
-  };
-
-  ws.onmessage = (event) => {
-    if (targetTabId) {
-      chrome.tabs.sendMessage(targetTabId, { type: 'backend-message', data: event.data });
+  // Listener for when the connection is disconnected.
+  port.onDisconnect.addListener(() => {
+    // The chrome.runtime.lastError property may contain details about the error.
+    if (chrome.runtime.lastError) {
+      console.error('Disconnected due to an error:', chrome.runtime.lastError.message);
+    } else {
+      console.log('Disconnected from native host.');
     }
-  };
-
-  ws.onclose = () => {
-    console.log('WebSocket disconnected');
-    stopCapture();
-  };
-
-  ws.onerror = (err) => {
-    console.error('WebSocket error:', err.message);
-    stopCapture();
-  };
+    port = null; // Clear the port reference.
+    // Optional: Implement reconnection logic here.
+  });
 }
+
+// Example: Connect when the extension is first installed or starts up.
+chrome.runtime.onStartup.addListener(connectToNativeHost);
+chrome.runtime.onInstalled.addListener(connectTo-NativeHost);
+
+
+// Example of how another part of the extension (e.g., a popup) would
+// trigger sending a message. This listener would receive messages from
+// other extension scripts.
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'startDubbing') {
+    if (!port) {
+      connectToNativeHost();
+    }
+    // Wait a moment to ensure connection is likely established before sending.
+    // A more robust solution would use callbacks or promises to confirm connection.
+    setTimeout(() => {
+      sendMessageToNativeHost({ text: request.data });
+    }, 500);
+  }
+  return true; // Indicates an asynchronous response may be sent.
+});
