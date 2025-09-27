@@ -1,24 +1,35 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>YouTube Translator</title>
+  <title>Live Translator</title>
   <style>
     body {
-      width: 200px;
-      text-align: center;
+      font-family: sans-serif;
+      width: 250px;
+    }
+    #controls, #status {
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <h2>Select Language</h2>
-  <select id="language-select">
-    <option value="Spanish">Spanish</option>
-    <option value="French">French</option>
-    <option value="German">German</option>
-    <option value="Hindi">Hindi</option>
-    <option value="Japanese">Japanese</option>
-  </select>
+  <h1>Live Translator</h1>
+  <div id="controls">
+    <label for="language-select">Translate to:</label>
+    <select id="language-select">
+      <option value="Spanish">Spanish</option>
+      <option value="French">French</option>
+      <option value="German">German</option>
+      <option value="Italian">Italian</option>
+      <option value="Portuguese">Portuguese</option>
+      <option value="Russian">Russian</option>
+      <option value="Japanese">Japanese</option>
+      <option value="Korean">Korean</option>
+      <option value="Chinese">Chinese</option>
+    </select>
+  </div>
+  <button id="start-button">Start Translation</button>
+  <div id="status"></div>
   <script src="popup.js"></script>
 </body>
 </html>
