@@ -25,7 +25,7 @@ function initWebSocket() {
 
   ws.onmessage = (event) => {
     if (targetTabId) {
-      chrome.tabs.sendMessage(targetTabid, { type: 'backend-message', data: event.data });
+      chrome.tabs.sendMessage(targetTabId, { type: 'backend-message', data: event.data });
     }
   };
 
@@ -48,12 +48,6 @@ async function startCapture(tabId) {
   initWebSocket();
 
   try {
-    if (!chrome.tabCapture || typeof chrome.tabCapture.capture !== 'function') {
-      console.error('chrome.tabCapture.capture is not available. Ensure the "tabCapture" permission is in manifest.json and this is run from a user gesture.');
-      return;
-    }
-
-    console.log('Starting tab capture...');
     const stream = await chrome.tabCapture.capture({ audio: true, video: false });
     streamSource = stream;
 
@@ -70,6 +64,9 @@ async function startCapture(tabId) {
     };
     source.connect(workletNode);
     console.log('Tab audio capture started successfully.');
+
+    // Mute the tab after capture starts
+    chrome.tabs.update(tabId, { muted: true });
   } catch (error) {
     console.error('Error starting tab capture:', error.message);
     stopCapture();
@@ -93,9 +90,13 @@ function stopCapture() {
     ws.close();
     ws = null;
   }
+
+  // Unmute the tab when capture stops
+  if (targetTabId) {
+    chrome.tabs.update(targetTabId, { muted: false });
+  }
   targetTabId = null;
   chrome.storage.local.set({ isCapturing: false });
-  console.log("Audio capture stopped.");
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
