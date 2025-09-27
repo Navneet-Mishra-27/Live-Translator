@@ -1,59 +1,81 @@
-// server.js
-import "dotenv/config";
-import express from "express";
-import http from "http";
-import { WebSocketServer } from "ws";
-import wav from "wav";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import 'dotenv/config';
+import express from 'express';
+import http from 'http';
+import { WebSocketServer } from 'ws';
+import wav from 'wav';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 
 // --- Initialization ---
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Check for API Key at startup
 if (!process.env.GOOGLE_API_KEY) {
-  console.error("FATAL ERROR: GOOGLE_API_KEY is not set in your .env file.");
+  console.error('FATAL ERROR: GOOGLE_API_KEY is not set in your .env file.');
   process.exit(1);
 }
 
-// Initialize Google AI Clients
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-pro-latest' });
 const textToSpeechClient = new TextToSpeechClient();
 
-app.get("/", (req, res) => {
-  res.send("Subtitle backend with Google Gemini is running!");
+const languageToCode = {
+  'Spanish': 'es-ES',
+  'French': 'fr-FR',
+  'German': 'de-DE',
+  'Italian': 'it-IT',
+  'Portuguese': 'pt-BR',
+  'Russian': 'ru-RU',
+  'Japanese': 'ja-JP',
+  'Korean': 'ko-KR',
+  'Chinese': 'cmn-CN',
+};
+
+app.get('/', (req, res) => {
+  res.send('Subtitle backend with Google Gemini is running!');
 });
 
-// --- Helper Functions ---
-function pcmChunksToWavBuffer(chunks) {
-  return new Promise((resolve, reject) => {
-    try {
-      const writer = new wav.Writer({ channels: 1, sampleRate: 44100, bitDepth: 16 });
-      const buffers = [];
-      writer.on("data", (data) => buffers.push(data));
-      writer.on("finish", () => resolve(Buffer.concat(buffers)));
-      writer.on("error", reject);
-      for (const chunk of chunks) {
-        writer.write(Buffer.from(chunk));
-      }
-      writer.end();
-    } catch (e) {
-      reject(e);
+function pcmChunksToWavBuffer(chunks, sampleRate = 48000) {
+  const numChannels = 1;
+  const bitDepth = 16;
+  const byteRate = sampleRate * numChannels * (bitDepth / 8);
+  const blockAlign = numChannels * (bitDepth / 8);
+  const dataSize = chunks.length * chunks[0].length;
+  const buffer = Buffer.alloc(44 + dataSize);
+
+  buffer.write('RIFF', 0);
+  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.write('WAVE', 8);
+  buffer.write('fmt ', 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // Audio format (1 for PCM)
+  buffer.writeUInt16LE(numChannels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(byteRate, 28);
+  buffer.writeUInt16LE(blockAlign, 32);
+  buffer.writeUInt16LE(bitDepth, 34);
+  buffer.write('data', 36);
+  buffer.writeUInt32LE(dataSize, 40);
+
+  let offset = 44;
+  for (const chunk of chunks) {
+    for (let i = 0; i < chunk.length; i++) {
+      buffer.writeInt16LE(Math.max(-1, Math.min(1, chunk[i])) * 32767, offset);
+      offset += 2;
     }
-  });
+  }
+
+  return buffer;
 }
 
-// --- WebSocket Logic ---
-wss.on("connection", (ws) => {
-  console.log("Client connected via WebSocket");
+wss.on('connection', (ws) => {
+  console.log('Client connected via WebSocket');
   let audioBuffer = [];
   let accumulationTimer = null;
-  let targetLanguage = "Spanish";
+  let targetLanguage = 'Spanish';
 
-  ws.on("message", async (message) => {
+  ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message);
       if (data.type === 'setLanguage' && data.language) {
@@ -62,7 +84,7 @@ wss.on("connection", (ws) => {
         return;
       }
     } catch (e) {
-      audioBuffer.push(message);
+      audioBuffer.push(new Float32Array(message));
     }
 
     if (!accumulationTimer) {
@@ -70,51 +92,53 @@ wss.on("connection", (ws) => {
         const currentBuffer = [...audioBuffer];
         audioBuffer = [];
         accumulationTimer = null;
-        if (currentBuffer.length === 0) return;
+
+        if (currentBuffer.length === 0) {
+          return;
+        }
 
         try {
-          // 1. Convert audio buffer to WAV
-          const wavBuffer = await pcmChunksToWavBuffer(currentBuffer);
-          if (wavBuffer.length < 1000) return;
+          const wavBuffer = pcmChunksToWavBuffer(currentBuffer);
 
-          // 2. Transcription with Gemini
-          const audioPart = { inlineData: { mimeType: 'audio/wav', data: wavBuffer.toString('base64') } };
-          const transcriptionResult = await geminiModel.generateContent([ "Transcribe this audio.", audioPart ]);
+          const audioPart = {
+            inlineData: {
+              mimeType: 'audio/wav',
+              data: wavBuffer.toString('base64'),
+            },
+          };
+
+          const transcriptionResult = await geminiModel.generateContent(['Transcribe this audio.', audioPart]);
           const transcribedText = transcriptionResult.response.text().trim();
-          console.log("Transcribed:", transcribedText);
-          if (!transcribedText) return;
+          console.log('Transcribed:', transcribedText);
 
-          // 3. Translation with Gemini
+          if (!transcribedText) {
+            return;
+          }
+
           const translationResult = await geminiModel.generateContent(`Translate the following text to ${targetLanguage}: ${transcribedText}`);
           const translatedText = translationResult.response.text().trim();
-          console.log("Translated:", translatedText);
-          
-          // 4. Text-to-Speech with Google Cloud TTS
+          console.log('Translated:', translatedText);
+
           const [ttsResponse] = await textToSpeechClient.synthesizeSpeech({
             input: { text: translatedText },
-            voice: { languageCode: 'en-US', ssmlGender: 'NEUTRAL' }, // You can change this voice
+            voice: { languageCode: languageToCode[targetLanguage] || 'en-US', ssmlGender: 'NEUTRAL' },
             audioConfig: { audioEncoding: 'MP3' },
           });
           const audioBase64 = ttsResponse.audioContent.toString('base64');
-          
+
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ translatedText, audioData: audioBase64 }));
           }
-
         } catch (err) {
-          console.error("========================================");
-          console.error("Error during Google AI API call:", err.message);
-          console.error("========================================");
+          console.error('Error during Google AI API call:', err.message);
         }
-      }, 5000);
+      }, 3000);
     }
   });
 
-  ws.on("close", () => console.log("Client disconnected"));
-  ws.onerror = (err) => console.error("WebSocket server error:", err.message);
+  ws.on('close', () => console.log('Client disconnected'));
+  ws.onerror = (err) => console.error('WebSocket server error:', err.message);
 });
 
-// --- Start Server ---
 const PORT = 3000;
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
-
