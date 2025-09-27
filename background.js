@@ -1,108 +1,100 @@
 let ws = null;
 let audioContext = null;
-let workletNode = null;
 let streamSource = null;
+let workletNode = null;
+let targetTabId = null;
 
-function initWebSocket(tabId) {
-    if (ws && ws.readyState === WebSocket.OPEN) return;
+function initWebSocket() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    return;
+  }
 
-    ws = new WebSocket("ws://localhost:3000");
+  ws = new WebSocket('ws://localhost:3000');
 
-    ws.onopen = () => console.log("WebSocket connected");
-    ws.onmessage = (event) => {
-        if (tabId) {
-            chrome.tabs.sendMessage(tabId, { type: "backend-message", data: event.data });
-        }
-    };
-    ws.onclose = () => {
-        console.log("WebSocket disconnected.");
-        ws = null;
-        stopCapture();
-    };
-    ws.onerror = (err) => {
-        console.error("WS error:", err.message);
-        if(ws) ws.close();
-    };
-}
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    chrome.storage.local.get('targetLanguage', (data) => {
+      if (data.targetLanguage) {
+        ws.send(JSON.stringify({ type: 'setLanguage', language: data.targetLanguage }));
+      }
+    });
+  };
 
-function stopCapture() {
-    if (streamSource) {
-        streamSource.getTracks().forEach(track => track.stop());
-        streamSource = null;
+  ws.onmessage = (event) => {
+    if (targetTabId) {
+      chrome.tabs.sendMessage(targetTabId, { type: 'backend-message', data: event.data });
     }
-    if (workletNode) {
-        workletNode.disconnect();
-        workletNode = null;
+  };
+
+  ws.onclose = () => {
+    console.log('WebSocket disconnected');
+    ws = null;
+    stopCapture();
+  };
+
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err.message);
+    if (ws) {
+      ws.close();
     }
-    if (audioContext) {
-        audioContext.close();
-        audioContext = null;
-    }
-    console.log("Audio capture stopped.");
+  };
 }
 
 async function startCapture(tabId) {
-    initWebSocket(tabId);
-    
-    try {
-        const stream = await chrome.tabCapture.capture({ audio: true });
-        streamSource = stream;
+  targetTabId = tabId;
+  initWebSocket();
 
-        audioContext = new AudioContext();
-        const source = audioContext.createMediaStreamSource(stream);
+  try {
+    const stream = await chrome.tabCapture.capture({ audio: true, video: false });
+    streamSource = stream;
 
-        const processorCode = `
-        class PCMProcessor extends AudioWorkletProcessor {
-            process(inputs) {
-                const input = inputs[0][0];
-                if (!input) return true;
-                const buffer = new ArrayBuffer(input.length * 2);
-                const view = new DataView(buffer);
-                for (let i = 0; i < input.length; i++) {
-                    let s = Math.max(-1, Math.min(1, input[i]));
-                    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-                }
-                this.port.postMessage(buffer);
-                return true;
-            }
-        }
-        registerProcessor('pcm-processor', PCMProcessor);
-        `;
-        const blob = new Blob([processorCode], { type: "application/javascript" });
-        const url = URL.createObjectURL(blob);
-        await audioContext.audioWorklet.addModule(url);
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(stream);
 
-        workletNode = new AudioWorkletNode(audioContext, "pcm-processor");
-        workletNode.port.onmessage = (event) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(event.data);
-            }
-        };
-        source.connect(workletNode);
+    await audioContext.audioWorklet.addModule('audio-processor.js');
 
-        console.log("Tab audio capture started successfully.");
+    workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+    workletNode.port.onmessage = (event) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(event.data);
+      }
+    };
+    source.connect(workletNode);
+  } catch (error) {
+    console.error('Error starting tab capture:', error.message);
+    stopCapture();
+  }
+}
 
-    } catch (error) {
-        console.error("Error starting tab capture:", error.message);
-    }
+function stopCapture() {
+  if (streamSource) {
+    streamSource.getTracks().forEach(track => track.stop());
+    streamSource = null;
+  }
+  if (workletNode) {
+    workletNode.disconnect();
+    workletNode = null;
+  }
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  targetTabId = null;
+  chrome.storage.local.set({ isCapturing: false });
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'startCapture') {
-        if (sender.tab && sender.tab.id) {
-            startCapture(sender.tab.id);
-            sendResponse({ status: "capture_started" });
-        }
-        return true;
+  if (msg.type === 'startCapture') {
+    startCapture(msg.tabId);
+  } else if (msg.type === 'stopCapture') {
+    stopCapture();
+  } else if (msg.type === 'setLanguage') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'setLanguage', language: msg.language }));
     }
-    
-    if (msg.type === 'setLanguage' && msg.language) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'setLanguage', language: msg.language }));
-            sendResponse({ status: 'language_set' });
-        } else {
-            sendResponse({ status: 'error', message: 'WebSocket not connected' });
-        }
-        return true;
-    }
+  }
 });
